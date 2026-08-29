@@ -11,6 +11,8 @@ EMAIL_IMAP_HOST = "imaphz.qiye.163.com"
 EMAIL_IMAP_PORT = "993"
 EMAIL_SMTP_HOST = "smtphz.qiye.163.com"
 EMAIL_SMTP_PORT = "465"
+# Turnstile 人机验证站点密钥（公开值）；服务端密钥存于 Secrets（TURNSTILE_SECRET）
+TURNSTILE_SITE_KEY = "0x4AAAAAAEgpQSr2CoHfHhSn"
 
 # 头像存储：已绑定 Cloudflare KV（base64 存储自定义头像）
 [[kv_namespaces]]
