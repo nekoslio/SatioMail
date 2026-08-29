@@ -1,0 +1,15 @@
+# SatioMail 本地调试配置模板
+# 复制为项目根目录的 .dev.vars 并填入真实值（.dev.vars 已被 .gitignore 排除，不会提交）
+
+# 网页登录密码（自己随意设置）
+APP_PASSWORD=CHANGE_ME_APP_PASSWORD
+
+# 会话 Cookie 签名密钥（生成命令：openssl rand -hex 32）
+COOKIE_SECRET=CHANGE_ME_COOKIE_SECRET
+
+# 企业邮箱地址（完整地址，IMAP/SMTP 登录名）
+EMAIL_USERNAME=you@example.com
+
+# 邮箱客户端授权码（不是邮箱登录密码；
+# 网易企业邮：设置 → 客户端授权密码；腾讯企业邮：设置 → 客户端设置/安全 → 生成授权码）
+EMAIL_PASSWORD=CHANGE_ME_AUTH_CODE
