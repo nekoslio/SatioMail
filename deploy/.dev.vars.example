@@ -13,3 +13,9 @@ EMAIL_USERNAME=you@example.com
 # 邮箱客户端授权码（不是邮箱登录密码；
 # 网易企业邮：设置 → 客户端授权密码；腾讯企业邮：设置 → 客户端设置/安全 → 生成授权码）
 EMAIL_PASSWORD=CHANGE_ME_AUTH_CODE
+
+# 多账号配置（可选；JSON 数组字符串，配了则替代 EMAIL_USERNAME/EMAIL_PASSWORD）。
+# 每个元素支持字段：id / label / username / password / imapHost / imapPort /
+# smtpHost / smtpPort / from（from 可选，省略时等于 username）。
+# 部署到生产时请用：npx wrangler secret put ACCOUNTS_CONFIG
+# ACCOUNTS_CONFIG='[{"id":"work","label":"工作","username":"you@work.com","password":"AUTH","imapHost":"imap.exmail.qq.com","imapPort":993,"smtpHost":"smtp.exmail.qq.com","smtpPort":465}]'

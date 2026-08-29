@@ -97,12 +97,14 @@
 			<button id="btn-logout" class="icon-btn" title="退出登录">
 				<span class="material-symbols-outlined">logout</span>
 			</button>
-			<div class="account-chip" title="当前账号">
-				<div id="account-avatar" class="avatar avatar-sm"></div>
-				<span id="account-email" class="account-email"></span>
+<div id="account-chip" class="account-chip" title="当前账号 / 切换账号" role="button" tabindex="0">
+					<div id="account-avatar" class="avatar avatar-sm"></div>
+					<span id="account-email" class="account-email"></span>
+					<span id="account-chip-caret" class="account-chip-caret" aria-hidden="true">▾</span>
+				</div>
+				<div id="account-menu" class="account-menu" role="menu" hidden></div>
 			</div>
-		</div>
-	</header>
+		</header>
 
 	<div id="drawer-scrim" hidden></div>
 
