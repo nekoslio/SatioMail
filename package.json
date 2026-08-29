@@ -1,6 +1,6 @@
 {
   "name": "satiomail",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "A Gmail-style webmail client for Cloudflare Workers using IMAP/SMTP (NetEase/Tencent enterprise mail)",
   "type": "module",
