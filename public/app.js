@@ -302,6 +302,13 @@
 		state.mode = "folder";
 		state.currentFolder = name;
 		state.selectedUid = null;
+		// 移动端：选完文件夹自动收起抽屉
+		if (isNarrowScreen()) {
+			const app = document.getElementById("app-view");
+			app?.classList.add("nav-collapsed");
+			const scrim = document.getElementById("drawer-scrim");
+			if (scrim) scrim.hidden = true;
+		}
 		$("#search-input").value = "";
 		$("#search-clear").hidden = true;
 		renderFolders();
@@ -502,8 +509,18 @@
 	}
 
 	/* ---------------- reading pane ---------------- */
+	function isNarrowScreen() {
+		return window.innerWidth <= 860;
+	}
+
+	/** 移动端：阅读窗格覆盖层开/关（桌面端该 class 无样式效果） */
+	function setReadingOpen(open) {
+		document.getElementById("reading-pane")?.classList.toggle("open", open);
+	}
+
 	function clearReadingPane() {
 		state.selectedUid = null;
+		setReadingOpen(false);
 		$("#reading-loading").hidden = true;
 		$("#reading-empty").hidden = false;
 		$("#email-view").hidden = true;
@@ -512,6 +529,7 @@
 	}
 
 	function showReadingLoading() {
+		setReadingOpen(true);
 		$("#reading-loading").hidden = false;
 		$("#reading-empty").hidden = true;
 		$("#email-view").hidden = true;
@@ -542,6 +560,13 @@
 		const view = $("#email-view");
 		view.hidden = false;
 		view.innerHTML = "";
+
+		// 移动端：阅读覆盖层顶部的返回按钮（桌面端由 CSS 隐藏）
+		const back = document.createElement("button");
+		back.className = "email-mobile-back";
+		back.innerHTML = '<span class="material-symbols-outlined">arrow_back_ios_new</span>返回';
+		back.addEventListener("click", () => clearReadingPane());
+		view.appendChild(back);
 
 		const senderRaw = email.from && email.from.length > 0 ? email.from[0] : "(未知发件人)";
 		const p = parseAddress(senderRaw);
@@ -1140,20 +1165,32 @@
 			clearHoverTimers();
 			appView.classList.toggle("nav-collapsed");
 			if (!appView.classList.contains("nav-collapsed")) appView.classList.remove("hover-expand");
+			const scrim = document.getElementById("drawer-scrim");
+			if (scrim) scrim.hidden = !isNarrowScreen() || appView.classList.contains("nav-collapsed");
 		});
 
-		$("#sidebar")?.addEventListener("mouseenter", () => {
-			if (!appView.classList.contains("nav-collapsed")) return;
-			clearHoverTimers();
-			hoverTimer = setTimeout(() => appView.classList.add("hover-expand"), 500);
+		// 抽屉遮罩：点击关闭抽屉（移动端）
+		$("#drawer-scrim")?.addEventListener("click", () => {
+			appView.classList.add("nav-collapsed");
+			const scrim = document.getElementById("drawer-scrim");
+			if (scrim) scrim.hidden = true;
 		});
-		$("#sidebar")?.addEventListener("mouseleave", () => {
-			const wasExpanded = appView.classList.contains("hover-expand");
-			clearHoverTimers();
-			if (wasExpanded) {
-				leaveTimer = setTimeout(() => appView.classList.remove("hover-expand"), 500);
-			}
-		});
+
+		// 悬停自动展开仅适用于有鼠标指针的设备（触屏由点击抽屉取代）
+		if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+			$("#sidebar")?.addEventListener("mouseenter", () => {
+				if (!appView.classList.contains("nav-collapsed")) return;
+				clearHoverTimers();
+				hoverTimer = setTimeout(() => appView.classList.add("hover-expand"), 500);
+			});
+			$("#sidebar")?.addEventListener("mouseleave", () => {
+				const wasExpanded = appView.classList.contains("hover-expand");
+				clearHoverTimers();
+				if (wasExpanded) {
+					leaveTimer = setTimeout(() => appView.classList.remove("hover-expand"), 500);
+				}
+			});
+		}
 
 		$("#compose-btn").addEventListener("click", () => openCompose());
 		$("#btn-compose-toolbar")?.addEventListener("click", () => openCompose());

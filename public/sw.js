@@ -3,7 +3,7 @@
    - 页面导航：网络优先，失败回退缓存的应用壳
    - /api/*：一律直连网络，绝不缓存邮件数据
    - 更新：改版本号 CACHE 即可让所有客户端换新缓存 */
-const CACHE = "satiomail-v3";
+const CACHE = "satiomail-v5";
 const PRECACHE = [
 	"/",
 	"/app.css",

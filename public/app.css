@@ -1660,31 +1660,110 @@ html[data-theme="dark"] .icon-sun {
 	}
 }
 
+/* ---------- 移动端 / 窄屏 ---------- */
 @media (max-width: 860px) {
+	/* 关键：隐式列按 max-content 会取顶栏 518px 而撑破视口，限定为可用宽度 */
+	.app {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	/* 侧栏收起 = 抽屉完全隐藏，内容全宽（移动端无常驻图标栏） */
+	.shell,
+	.app.nav-collapsed .shell,
+	.app.hover-expand .shell {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.sidebar {
+		position: fixed;
+		left: 0;
+		top: var(--topbar-h);
+		bottom: 0;
+		width: min(300px, 84vw);
+		z-index: 50;
+		background: var(--page);
+		box-shadow: var(--shadow-3);
+		opacity: 0;
+		pointer-events: none;
+		transform: translateX(-100%);
+		transition: transform 0.25s var(--ease-emph), opacity 0.25s var(--ease-emph);
+	}
+
+	.app:not(.nav-collapsed) .sidebar {
+		opacity: 1;
+		pointer-events: auto;
+		transform: translateX(0);
+	}
+
+	#drawer-scrim {
+		position: fixed;
+		inset: var(--topbar-h) 0 0 0;
+		z-index: 45;
+		background: rgba(32, 33, 36, 0.35);
+	}
+
+	/* 邮件阅读：全屏覆盖层，自底部滑入；返回时滑出 */
 	.split {
-		grid-template-columns: 1fr;
-		grid-template-rows: 45% 1fr;
+		display: block;
 	}
 
 	.list-pane {
 		border-right: none;
-		border-bottom: 1px solid var(--hairline);
 	}
 
+	.reading-pane {
+		position: fixed;
+		inset: 0;
+		z-index: 40;
+		background: var(--bg);
+		border-left: none;
+		transform: translateY(100%);
+		visibility: hidden;
+		transition: transform 0.3s var(--ease-emph), visibility 0s linear 0.3s;
+	}
+
+	.reading-pane.open {
+		transform: translateY(0);
+		visibility: visible;
+		transition: transform 0.3s var(--ease-emph), visibility 0s;
+	}
+
+	.email-mobile-back {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		margin: 0 0 10px -8px;
+		padding: 8px 14px 8px 6px;
+		border-radius: var(--radius-pill);
+		font-size: 14px;
+		color: var(--accent);
+	}
+
+	.email-mobile-back .material-symbols-outlined {
+		font-size: 20px;
+	}
+
+	/* 列表行：触屏常显操作按钮（无悬停），隐藏摘要与日期 */
 	.email-item {
 		grid-template-columns: 36px minmax(0, 1fr) auto;
 	}
 
-	.email-mid {
+	.email-mid,
+	.email-date {
 		display: none;
 	}
 
 	.email-sender {
 		grid-column: 2;
+		min-width: 0;
+	}
+
+	.email-hover-actions {
+		display: flex;
 	}
 
 	.email-view {
-		padding: 20px 20px 40px;
+		padding: 16px 18px 40px;
 	}
 
 	.toolbar-title {
