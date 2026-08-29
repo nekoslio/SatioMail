@@ -96,6 +96,8 @@ npx wrangler deploy
 | POST | `/api/login` | 登录，可带 `totp`、`turnstileToken` |
 | POST | `/api/logout` | 退出 |
 | GET | `/api/me` | 当前账号 |
+| GET | `/api/accounts` | 列出多账号配置（公开字段，公开密码/主机） |
+| POST | `/api/accounts/active` | 切换当前活跃账号 |
 | GET | `/api/avatar` | 读头像 |
 | POST | `/api/avatar` | 设置/移除头像 |
 | GET | `/api/folders` | 文件夹列表和未读数 |
@@ -119,9 +121,50 @@ npx wrangler deploy
 - HTML 邮件白名单净化，远程图片默认不加载，`javascript:` 协议拦截
 - `/api/*` 不被 Service Worker 缓存；静态资源网络优先、离线回退缓存
 
+## 多账号（v1.3+）
+
+默认仍是单账号；新增 `ACCOUNTS_CONFIG`（Workers Secret，JSON 数组）支持多账号。
+配置示例：
+
+```json
+[
+	{
+		"id": "personal",
+		"label": "私人 · 163",
+		"username": "you@163.com",
+		"password": "授权码A",
+		"imapHost": "imaphz.qiye.163.com",
+		"imapPort": 993,
+		"smtpHost": "smtphz.qiye.163.com",
+		"smtpPort": 465
+	},
+	{
+		"id": "work",
+		"label": "公司 · QQ",
+		"username": "you@qq.com",
+		"password": "授权码B",
+		"imapHost": "imap.exmail.qq.com",
+		"imapPort": 993,
+		"smtpHost": "smtp.exmail.qq.com",
+		"smtpPort": 465
+	}
+]
+```
+
+上传：
+
+```bash
+npx wrangler secret put ACCOUNTS_CONFIG   # 把上面的 JSON 粘进去（整段）
+```
+
+切换：顶栏点账号胶囊 → 选择目标账号；后端会下发新会话 Cookie，自动重载页面。
+凭据始终只存在 Secret，不下发到前端；`/api/accounts` 只返回 `id` / `label` / `email` / `from`。
+
+如果只填了旧的 `EMAIL_USERNAME` / `EMAIL_PASSWORD` 等单账号 Secret，完全兼容本版本，
+无任何行为变化（登录后默认账号即唯一账号）。
+
 ## 已知限制
 
-- 单账号，多账号要自己改
 - 每个请求单独建 IMAP 连接，冷启动第一下慢
 - 附件和总量上限 25MB，受 Worker 内存限制
 - 搜索只能覆盖最近 500 封（网易 IMAP SEARCH 的锅）

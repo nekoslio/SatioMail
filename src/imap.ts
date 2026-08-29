@@ -1,19 +1,18 @@
 import { CFImap, ImapError } from "cf-imap";
-import type { Env } from "./config";
-import { imapPort } from "./config";
+import type { Account } from "./config";
 
 const READ_TIMEOUT_MS = 15000;
 const CONNECT_TIMEOUT_MS = 20000;
 const OVERALL_TIMEOUT_MS = 25000;
 
-function makeImap(env: Env): CFImap {
+function makeImap(account: Account): CFImap {
 	return new CFImap({
-		host: env.EMAIL_IMAP_HOST,
-		port: imapPort(env),
+		host: account.imapHost,
+		port: account.imapPort,
 		tls: true,
 		auth: {
-			username: env.EMAIL_USERNAME,
-			password: env.EMAIL_PASSWORD,
+			username: account.username,
+			password: account.password,
 		},
 		timeoutMs: READ_TIMEOUT_MS,
 	});
@@ -66,12 +65,12 @@ function closeQuietly(client: CFImap | null): void {
  * platform). A fresh connection per request keeps every call bounded and
  * independent.
  */
-export function withImap<T>(env: Env, fn: (imap: CFImap) => Promise<T>): Promise<T> {
+export function withImap<T>(account: Account, fn: (imap: CFImap) => Promise<T>): Promise<T> {
 	const deadline = Date.now() + OVERALL_TIMEOUT_MS;
 	const remaining = () => Math.max(500, deadline - Date.now());
 
 	const attempt = async (): Promise<T> => {
-		const client = makeImap(env);
+		const client = makeImap(account);
 		await withTimeout(client.connect(), Math.min(CONNECT_TIMEOUT_MS, remaining()), "连接 IMAP 服务器");
 		try {
 			return await fn(client);
