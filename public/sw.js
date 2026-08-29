@@ -3,7 +3,7 @@
    - 页面导航：网络优先，失败回退缓存的应用壳
    - /api/*：一律直连网络，绝不缓存邮件数据
    - 更新：改版本号 CACHE 即可让所有客户端换新缓存 */
-const CACHE = "satiomail-v5";
+const CACHE = "satiomail-v6";
 const PRECACHE = [
 	"/",
 	"/app.css",
@@ -53,19 +53,16 @@ self.addEventListener("fetch", (event) => {
 		return;
 	}
 
-	// 其余同源静态资源：缓存优先 + 后台更新
+	// 其余同源静态资源：网络优先（在线即最新），失败回退缓存（离线可用）
 	event.respondWith(
-		caches.match(req).then((cached) => {
-			const network = fetch(req)
-				.then((res) => {
-					if (res.ok) {
-						const copy = res.clone();
-						caches.open(CACHE).then((cache) => cache.put(req, copy));
-					}
-					return res;
-				})
-				.catch(() => cached);
-			return cached || network;
-		}),
+		fetch(req)
+			.then((res) => {
+				if (res.ok) {
+					const copy = res.clone();
+					caches.open(CACHE).then((cache) => cache.put(req, copy));
+				}
+				return res;
+			})
+			.catch(() => caches.match(req)),
 	);
 });

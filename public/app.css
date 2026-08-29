@@ -1769,6 +1769,33 @@ html[data-theme="dark"] .icon-sun {
 	.toolbar-title {
 		font-size: 18px;
 	}
+
+	/* 顶栏紧凑化：搜索框可大幅收缩，右侧控件收窄，确保不溢出 */
+	.topbar {
+		padding: 0 8px;
+		gap: 6px;
+	}
+
+	.topbar-right {
+		gap: 0;
+		flex: 0 1 auto;
+	}
+
+	.topbar-right .icon-btn {
+		width: 34px;
+		height: 34px;
+	}
+
+	.account-chip {
+		padding: 2px;
+		gap: 0;
+	}
+
+	.search-bar {
+		flex: 1 1 120px;
+		min-width: 0;
+		height: 44px;
+	}
 }
 
 /* ---------- Material Symbols 图标 ---------- */
