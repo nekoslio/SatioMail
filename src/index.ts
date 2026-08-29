@@ -6,6 +6,7 @@ import {
 	handleLogin,
 	handleLogout,
 	handleMe,
+	handleAuthConfig,
 	handleAvatarGet,
 	handleAvatarPut,
 	handleFolders,
@@ -51,13 +52,13 @@ const SECURITY_HEADERS: Record<string, string> = {
 	"Referrer-Policy": "strict-origin-when-cross-origin",
 		"Content-Security-Policy": [
 			"default-src 'self'",
-			"script-src 'self'",
+			"script-src 'self' https://challenges.cloudflare.com",
 			// 'unsafe-inline'：前端通过 style 属性内联头像背景色等动态样式，属已知取舍
 			"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
 			"font-src https://fonts.gstatic.com data:",
 			"img-src 'self' data: https:",
 			"connect-src 'self'",
-			"frame-src 'none'",
+			"frame-src https://challenges.cloudflare.com",
 			"object-src 'none'",
 			"base-uri 'self'",
 			"form-action 'self'",
@@ -85,6 +86,11 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 
 	if (request.method === "POST" && path === "/api/login") {
 		return handleLogin(env, await readJson(request), request);
+	}
+
+	// 登录页配置必须公开：登录页需要它来决定是否渲染动态码/Turnstile
+	if (request.method === "GET" && path === "/api/config") {
+		return handleAuthConfig(env);
 	}
 
 	if (!(await verifySession(request, env))) {

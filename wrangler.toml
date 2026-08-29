@@ -16,3 +16,8 @@ EMAIL_SMTP_PORT = "465"
 [[kv_namespaces]]
 binding = "AVATAR_KV"
 id = "12b2f2ca9b074a0d8e7a6b5c097d7692"
+
+# 登录限流：跨实例全局限流（60 秒 5 次失败锁定）
+[[kv_namespaces]]
+binding = "LOGIN_KV"
+id = "c6b1afaa63464eea83eef4aa4504fe09"

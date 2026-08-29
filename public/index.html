@@ -32,12 +32,17 @@
 		</div>
 		<h1 class="login-title">SatioMail</h1>
 		<p class="login-sub">登录你的邮箱</p>
-		<form id="login-form" class="login-form">
-			<div class="login-field">
-				<input id="login-password" type="password" class="text-input" placeholder=" " autocomplete="current-password" required />
-				<label for="login-password">访问密码</label>
-			</div>
-			<div id="login-error" class="login-error" hidden></div>
+			<form id="login-form" class="login-form">
+				<div class="login-field">
+					<input id="login-password" type="password" class="text-input" placeholder=" " autocomplete="current-password" required />
+					<label for="login-password">访问密码</label>
+				</div>
+				<div class="login-field" id="login-totp-field" hidden>
+					<input id="login-totp" type="text" class="text-input" placeholder=" " inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
+					<label for="login-totp">动态验证码</label>
+				</div>
+				<div id="turnstile-box" class="turnstile-box" hidden></div>
+				<div id="login-error" class="login-error" hidden></div>
 			<div class="login-actions">
 				<span class="login-hint">凭据存储于 Workers Secrets，不在网页回显</span>
 				<button id="login-btn" type="submit" class="btn btn-primary">登录</button>

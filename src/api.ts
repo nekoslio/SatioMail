@@ -6,6 +6,7 @@ import { withImap } from "./imap";
 import { sendMail } from "./smtp";
 import { buildMimeMessage } from "./mime";
 import { constantTimeEqual, createSession, setSessionCookie, clearCookieHeader, isHttps } from "./auth";
+import { verifyTotp } from "./totp";
 
 export function json(data: unknown, status = 200): Response {
 	return new Response(JSON.stringify(data), {
@@ -231,15 +232,55 @@ function normalizeFlags(input: unknown[]): string[] {
 		.filter((f): f is string => f !== null);
 }
 
-export async function handleLogin(env: Env, body: { password?: string }, request: Request): Promise<Response> {
+/** 登录页配置（公开）：告知前端是否需要渲染动态验证码 / Turnstile */
+export function handleAuthConfig(env: Env): Response {
+	return json({
+		ok: true,
+		totpEnabled: Boolean(env.TOTP_SECRET),
+		turnstileSiteKey: env.TURNSTILE_SITE_KEY ?? null,
+	});
+}
+
+/** Turnstile 服务端校验（仅在配置了密钥时启用） */
+async function verifyTurnstile(env: Env, token: string, ip: string): Promise<boolean> {
+	if (!env.TURNSTILE_SECRET) return true; // 未启用则跳过
+	if (!token) return false;
+	try {
+		const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({ secret: env.TURNSTILE_SECRET, response: token, remoteip: ip === "unknown" ? "" : ip }),
+		});
+		const result = (await res.json()) as { success: boolean };
+		return result.success === true;
+	} catch (e) {
+		console.error("Turnstile verify failed:", e instanceof Error ? e.message : String(e));
+		return false;
+	}
+}
+
+export async function handleLogin(env: Env, body: { password?: string; totp?: string; turnstileToken?: string }, request: Request): Promise<Response> {
 	if (!body.password) return error("缺少密码", 400);
 	const ip = clientIp(request);
 	if (await loginBlocked(env, ip)) {
 		return error("尝试次数过多，请稍后再试", 429);
 	}
+	if (!(await verifyTurnstile(env, String(body.turnstileToken ?? ""), ip))) {
+		return json({ ok: false, error: "人机验证未通过，请重试", needTurnstile: true }, 401);
+	}
 	if (!constantTimeEqual(body.password, env.APP_PASSWORD)) {
 		await recordLoginFailureKv(env, ip);
-		return error("密码错误", 401);
+		return json({ ok: false, error: "密码错误" }, 401);
+	}
+	if (env.TOTP_SECRET) {
+		const totp = String(body.totp ?? "").trim();
+		if (!totp) {
+			return json({ ok: false, error: "请输入动态验证码", needTotp: true }, 401);
+		}
+		if (!(await verifyTotp(env.TOTP_SECRET, totp))) {
+			await recordLoginFailureKv(env, ip);
+			return json({ ok: false, error: "动态验证码错误或已过期", needTotp: true }, 401);
+		}
 	}
 	await clearLoginFailuresKv(env, ip);
 	const token = await createSession(env);

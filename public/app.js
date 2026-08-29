@@ -154,7 +154,10 @@
 			/* ignore */
 		}
 		if (!res.ok) {
-			throw new Error((json && json.error) || `请求失败 (${res.status})`);
+			const err = new Error((json && json.error) || `请求失败 (${res.status})`);
+			if (json && json.needTotp) err.needTotp = true;
+			if (json && json.needTurnstile) err.needTurnstile = true;
+			throw err;
 		}
 		return json;
 	}
@@ -1086,13 +1089,22 @@
 			btn.textContent = "登录中…";
 			$("#login-error").hidden = true;
 			try {
-				const me = await api("/api/login", { password: $("#login-password").value });
+				const payload = { password: $("#login-password").value };
+				const totp = $("#login-totp")?.value.trim();
+				if (totp) payload.totp = totp;
+				if (window.__cfqmTurnstileToken) payload.turnstileToken = window.__cfqmTurnstileToken;
+				const me = await api("/api/login", payload);
 				state.account = me;
 				showApp();
 				await refreshAll();
 			} catch (err) {
 				$("#login-error").textContent = err.message;
 				$("#login-error").hidden = false;
+				if (err.needTotp) {
+					$("#login-totp-field").hidden = false;
+					$("#login-totp")?.focus();
+				}
+				if (err.needTurnstile) resetTurnstile();
 			} finally {
 				btn.disabled = false;
 				btn.textContent = "登 录";
@@ -1252,9 +1264,70 @@
 		});
 	}
 
+	/* ---------------- 登录页安全配置（Turnstile 人机验证） ---------------- */
+	function resetTurnstile() {
+		window.__cfqmTurnstileToken = "";
+		if (window.turnstile && window.__cfqmTurnstileWidgetId != null) {
+			try {
+				window.turnstile.reset(window.__cfqmTurnstileWidgetId);
+			} catch {
+				/* ignore */
+			}
+		}
+	}
+
+	function renderTurnstile(siteKey) {
+		const box = $("#turnstile-box");
+		box.hidden = false;
+		const render = () => {
+			if (!window.turnstile) return;
+			if (window.__cfqmTurnstileWidgetId != null) {
+				resetTurnstile();
+				return;
+			}
+			window.__cfqmTurnstileWidgetId = window.turnstile.render(box, {
+				sitekey: siteKey,
+				callback: (token) => {
+					window.__cfqmTurnstileToken = token;
+				},
+				"expired-callback": () => {
+					window.__cfqmTurnstileToken = "";
+				},
+				"error-callback": () => {
+					window.__cfqmTurnstileToken = "";
+					return true;
+				},
+				theme: document.documentElement.dataset.theme === "dark" ? "dark" : "light",
+			});
+		};
+		if (window.turnstile) {
+			render();
+			return;
+		}
+		if (document.getElementById("turnstile-script")) return;
+		const s = document.createElement("script");
+		s.id = "turnstile-script";
+		s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+		s.async = true;
+		s.defer = true;
+		s.onload = render;
+		document.head.appendChild(s);
+	}
+
+	async function loadAuthConfig() {
+		try {
+			const cfg = await api("/api/config");
+			if (cfg.totpEnabled) $("#login-totp-field").hidden = false;
+			if (cfg.turnstileSiteKey) renderTurnstile(cfg.turnstileSiteKey);
+		} catch {
+			/* 配置加载失败不阻塞登录（后端会兜底校验） */
+		}
+	}
+
 	async function init() {
 		bindEvents();
 		registerServiceWorker();
+		loadAuthConfig();
 		if (window.innerWidth < 900) {
 			document.getElementById("app-view")?.classList.add("nav-collapsed");
 		}

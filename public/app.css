@@ -1710,3 +1710,13 @@ html[data-theme="dark"] .icon-sun {
 .attachment-icon .material-symbols-outlined { font-size: 20px; }
 .compose-att-item .att-icon .material-symbols-outlined { font-size: 14px; }
 .empty-icon .material-symbols-outlined { font-size: 48px; }
+
+/* ---------- 登录页 Turnstile ---------- */
+.turnstile-box {
+	display: flex;
+	justify-content: center;
+	margin: 12px 0 4px;
+	min-height: 0;
+}
+
+.turnstile-box:empty { display: none; }

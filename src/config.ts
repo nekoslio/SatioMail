@@ -9,10 +9,16 @@ export interface Env {
 	EMAIL_SMTP_PORT: string;
 	EMAIL_FROM?: string;
 	ASSETS: Fetcher;
-	/** 可选：用于跨实例登录限流的 KV 命名空间（不配置则退化为内存限流） */
+	/** 可选：用于跨实例登录限流的 KV 命名空间（不配置则退化为按隔离实例的内存计数） */
 	LOGIN_KV?: KVNamespace;
 	/** 可选：头像存储 KV（不配置则头像功能返回未配置提示） */
 	AVATAR_KV?: KVNamespace;
+	/** 可选：TOTP 二步验证密钥（Base32）。不配置则登录无需动态验证码 */
+	TOTP_SECRET?: string;
+	/** 可选：Turnstile 人机验证站点密钥（公开）。不配置则登录无人机验证 */
+	TURNSTILE_SITE_KEY?: string;
+	/** 可选：Turnstile 服务端校验密钥。与 SITE_KEY 成对配置才启用 */
+	TURNSTILE_SECRET?: string;
 }
 
 export const DEFAULT_IMAP_PORT = 993;
