@@ -12,12 +12,7 @@ EMAIL_IMAP_PORT = "993"
 EMAIL_SMTP_HOST = "smtphz.qiye.163.com"
 EMAIL_SMTP_PORT = "465"
 
-# 头像存储（可选）：部署前执行
-#   npx wrangler login
-#   npx wrangler kv namespace create AVATAR_KV
-# 把输出的 id 填到下面并取消注释，然后重新部署即可启用头像功能。
-# 未配置时头像接口返回友好提示，其余功能不受影响。
-# 本地 npm run dev 如需测试头像，可取消注释（本地为模拟 KV，无需真实 id）。
-# [[kv_namespaces]]
-# binding = "AVATAR_KV"
-# id = "粘贴wrangler输出的id"
+# 头像存储：已绑定 Cloudflare KV（base64 存储自定义头像）
+[[kv_namespaces]]
+binding = "AVATAR_KV"
+id = "12b2f2ca9b074a0d8e7a6b5c097d7692"
