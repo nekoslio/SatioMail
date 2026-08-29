@@ -7,6 +7,12 @@ import { sendMail } from "./smtp";
 import { buildMimeMessage } from "./mime";
 import { constantTimeEqual, createSession, setSessionCookie, clearCookieHeader, isHttps } from "./auth";
 import { verifyTotp } from "./totp";
+import {
+	parseAutoAvatarConfig,
+	readAutoAvatarCache,
+	resolveAutoAvatar,
+	writeAutoAvatarCache,
+} from "./auto-avatar";
 
 export function json(data: unknown, status = 200): Response {
 	return new Response(JSON.stringify(data), {
@@ -332,6 +338,45 @@ export async function handleAvatarPut(
 	}
 	await env.AVATAR_KV.put(AVATAR_KV_KEY, dataUrl);
 	return json({ ok: true });
+}
+
+const AUTO_CACHE_KEY = "auto-avatar";
+
+/**
+ * 自动头像：当用户没上传自定义头像时，按 env.AVATAR_AUTO_SOURCE 顺序
+ * 查找 Gravatar / QQ 头像，命中即缓存到 AVATAR_KV 的 auto-avatar 槽位。
+ * 命中缓存直接返回，不发外网请求；未命中缓存才查找，命中/未命中都会写缓存。
+ */
+export async function handleAutoAvatarGet(env: Env): Promise<Response> {
+	const cfg = parseAutoAvatarConfig(env.AVATAR_AUTO_SOURCE);
+	if (cfg.sources.length === 0) {
+		return json({ ok: true, source: null, dataUrl: null });
+	}
+	if (!env.AVATAR_KV) {
+		return json({ ok: true, source: null, dataUrl: null });
+	}
+
+	const cached = await readAutoAvatarCache(env, AUTO_CACHE_KEY);
+	if (cached) {
+		return json({ ok: true, source: cached.source, dataUrl: cached.dataUrl });
+	}
+
+	const result = await resolveAutoAvatar(cfg, accountEmail(env));
+	ctxWaitUntil(env, writeAutoAvatarCache(env, AUTO_CACHE_KEY, result));
+	return json({ ok: true, source: result.source, dataUrl: result.dataUrl });
+}
+
+/**
+ * 把写缓存等"延后完成也行"的任务挂到 ctx.waitUntil；本地开发环境没有 ctx 时直接 await。
+ * 命中缓存路径几乎瞬时返回，挂载点只在外网查询失败时生效。
+ */
+function ctxWaitUntil(env: Env, promise: Promise<unknown>): void {
+	const ctx = (env as unknown as { ctx?: { waitUntil?: (p: Promise<unknown>) => void } }).ctx;
+	if (ctx?.waitUntil) {
+		ctx.waitUntil(promise);
+		return;
+	}
+	void promise.catch(() => {});
 }
 
 export async function handleFolders(env: Env): Promise<Response> {

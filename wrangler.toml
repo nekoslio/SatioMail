@@ -14,6 +14,9 @@ EMAIL_SMTP_PORT = "465"
 # Turnstile 人机验证站点密钥（公开值）；服务端密钥存于 Secrets（TURNSTILE_SECRET）
 TURNSTILE_SITE_KEY = "0x4AAAAAAEgpQSr2CoHfHhSn"
 
+# 自动头像来源顺序，逗号分隔，取值 gravatar / qq；空或 none 关闭自动加载
+AVATAR_AUTO_SOURCE = "gravatar,qq"
+
 # 头像存储：已绑定 Cloudflare KV（base64 存储自定义头像）
 [[kv_namespaces]]
 binding = "AVATAR_KV"

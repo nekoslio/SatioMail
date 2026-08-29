@@ -280,7 +280,13 @@
 	async function loadAvatar() {
 		try {
 			const data = await api("/api/avatar");
-			applyAvatar(data.dataUrl);
+			if (data.dataUrl) {
+				applyAvatar(data.dataUrl);
+				return;
+			}
+			// 用户没上传头像，尝试从外部服务自动加载（首次会发一次外网请求，后续 KV 命中）
+			const auto = await api("/api/avatar/auto");
+			applyAvatar(auto.dataUrl);
 		} catch {
 			/* 头像加载失败不影响主流程 */
 		}

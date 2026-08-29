@@ -13,6 +13,7 @@
 - 写邮件：抄送/密送、附件、回复、转发，发出后自动存一份到已发送
 - 搜索：网易的 IMAP SEARCH 不完整，所以在本地按关键词过滤最近 500 封
 - 自定义头像（存 KV，可选）
+- 未上传头像时自动从 Gravatar / QQ 头像加载，命中后写入 KV 缓存（可关）
 - 浅色/深色主题切换
 - PWA，可以装成桌面或手机应用
 
@@ -83,6 +84,7 @@ npx wrangler deploy
 
 - 登录限流的 KV（`LOGIN_KV`）已在 `wrangler.toml` 里绑定，开箱即用
 - 自定义头像：`npx wrangler kv namespace create AVATAR_KV`，把 id 填进 `wrangler.toml`
+- 自动头像：默认从 Gravatar + QQ 头像加载，关掉就在 `[vars]` 里设 `AVATAR_AUTO_SOURCE = "none"`
 - TOTP 动态码：生成一个 Base32 密钥，`npx wrangler secret put TOTP_SECRET`，录进验证器 App（详见 deploy/README.md 5.1 节）
 - Turnstile：控制台建一个 site，Site Key 填 `wrangler.toml`，Secret Key 走 `wrangler secret put TURNSTILE_SECRET`
 
@@ -98,6 +100,7 @@ npx wrangler deploy
 | GET | `/api/me` | 当前账号 |
 | GET | `/api/avatar` | 读头像 |
 | POST | `/api/avatar` | 设置/移除头像 |
+| GET | `/api/avatar/auto` | 自动从 Gravatar / QQ 头像加载 |
 | GET | `/api/folders` | 文件夹列表和未读数 |
 | GET | `/api/emails?folder=&offset=&limit=` | 邮件列表 |
 | GET | `/api/search?folder=&q=` | 搜索 |

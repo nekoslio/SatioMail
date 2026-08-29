@@ -9,6 +9,7 @@ import {
 	handleAuthConfig,
 	handleAvatarGet,
 	handleAvatarPut,
+	handleAutoAvatarGet,
 	handleFolders,
 	handleListEmails,
 	handleSearchEmails,
@@ -107,6 +108,10 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 
 	if (request.method === "GET" && path === "/api/avatar") {
 		return handleAvatarGet(env);
+	}
+
+	if (request.method === "GET" && path === "/api/avatar/auto") {
+		return handleAutoAvatarGet(env);
 	}
 
 	if (request.method === "POST" && path === "/api/avatar") {
