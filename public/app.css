@@ -495,10 +495,106 @@ html[data-theme="dark"] .icon-sun {
 	padding: 4px 10px 4px 4px;
 	border-radius: var(--radius-pill);
 	max-width: 260px;
+	cursor: default;
+	user-select: none;
+}
+
+.account-chip[role="button"] {
+	cursor: pointer;
 }
 
 .account-chip:hover {
 	background: var(--surface-2);
+}
+
+.account-chip-caret {
+	font-size: 12px;
+	color: var(--text-3);
+	line-height: 1;
+}
+
+.account-chip-caret[hidden] {
+	display: none;
+}
+
+.account-menu {
+	position: fixed;
+	top: 56px;
+	right: 16px;
+	min-width: 240px;
+	max-width: 320px;
+	background: var(--surface-1);
+	border: 1px solid var(--border-1);
+	border-radius: 12px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+	padding: 6px;
+	z-index: 60;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.account-menu[hidden] {
+	display: none;
+}
+
+.account-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 10px;
+	border: none;
+	background: transparent;
+	color: inherit;
+	text-align: left;
+	border-radius: 8px;
+	cursor: pointer;
+	font: inherit;
+}
+
+.account-menu-item:hover {
+	background: var(--surface-2);
+}
+
+.account-menu-item.active {
+	background: var(--surface-3);
+}
+
+.account-menu-avatar {
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: #fff;
+	font-size: 13px;
+	font-weight: 600;
+	flex: 0 0 auto;
+}
+
+.account-menu-text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.account-menu-label {
+	font-size: 13px;
+	color: var(--text-1);
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.account-menu-email {
+	font-size: 11px;
+	color: var(--text-3);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .account-email {

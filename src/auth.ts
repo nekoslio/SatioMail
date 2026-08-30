@@ -1,4 +1,5 @@
 import type { Env } from "./config";
+import { getActiveAccountId } from "./config";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 
@@ -14,6 +15,8 @@ function isHttps(request: Request): boolean {
 interface SessionPayload {
 	v: number;
 	exp: number;
+	/** 当前活跃账号 id；登录时填入默认账号，登录后可通过 /api/accounts/active 切换 */
+	aid?: string;
 }
 
 function base64UrlEncode(data: ArrayBuffer | Uint8Array): string {
@@ -63,34 +66,40 @@ export function readCookie(request: Request, name: string): string | null {
 	return null;
 }
 
-export async function verifySession(request: Request, env: Env): Promise<boolean> {
+/**
+ * 校验会话并返回活跃账号 id；账号 id 与其他字段一起经 HMAC 签名，
+ * 客户端无法篡改「我现在用的是哪个账号」。返回值不含密码/敏感信息。
+ */
+export async function verifySession(request: Request, env: Env): Promise<string | null> {
 	const token = readCookie(request, cookieName(isHttps(request)));
-	if (!token) return false;
+	if (!token) return null;
 	const parts = token.split(".");
-	if (parts.length !== 3) return false;
+	if (parts.length !== 3) return null;
 	const [expB64, sigB64, payloadB64] = parts;
-	if (!expB64 || !sigB64 || !payloadB64) return false;
+	if (!expB64 || !sigB64 || !payloadB64) return null;
 
 	const exp = parseInt(new TextDecoder().decode(base64UrlDecode(expB64)), 10);
-	if (isNaN(exp) || exp < Date.now() / 1000) return false;
+	if (isNaN(exp) || exp < Date.now() / 1000) return null;
 
 	const expected = await hmac(env.COOKIE_SECRET, expB64 + "." + payloadB64);
 	const expectedSig = base64UrlEncode(expected);
-	if (!constantTimeEqual(sigB64, expectedSig)) return false;
+	if (!constantTimeEqual(sigB64, expectedSig)) return null;
 
 	const payload = base64UrlDecode(payloadB64);
 	try {
 		const parsed = JSON.parse(new TextDecoder().decode(payload)) as SessionPayload;
-		return parsed.v === 1 && parsed.exp === exp;
+		if (parsed.v !== 1 || parsed.exp !== exp) return null;
+		return typeof parsed.aid === "string" ? parsed.aid : getActiveAccountId(env);
 	} catch {
-		return false;
+		return null;
 	}
 }
 
-export async function createSession(env: Env): Promise<string> {
+export async function createSession(env: Env, accountId?: string): Promise<string> {
 	const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
 	const expB64 = base64UrlEncode(new TextEncoder().encode(String(exp)));
-	const payload: SessionPayload = { v: 1, exp };
+	const aid = (accountId ?? getActiveAccountId(env)).trim().slice(0, 64) || getActiveAccountId(env);
+	const payload: SessionPayload = { v: 1, exp, aid };
 	const payloadB64 = base64UrlEncode(new TextEncoder().encode(JSON.stringify(payload)));
 	const sig = await hmac(env.COOKIE_SECRET, expB64 + "." + payloadB64);
 	const sigB64 = base64UrlEncode(sig);

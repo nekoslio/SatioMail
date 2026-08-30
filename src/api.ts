@@ -1,7 +1,16 @@
 import type { CFImap, Email, Folder } from "cf-imap";
 import { ImapError } from "./imap";
-import type { Env } from "./config";
-import { fromAddress, accountEmail, smtpPort } from "./config";
+import type { Account, Env } from "./config";
+import {
+	fromAddressFor,
+	accountEmailFor,
+	smtpPortFor,
+	imapPortFor,
+	listAccounts,
+	resolveAccount,
+	toPublicAccount,
+	getActiveAccountId,
+} from "./config";
 import { withImap } from "./imap";
 import { sendMail } from "./smtp";
 import { buildMimeMessage } from "./mime";
@@ -112,13 +121,17 @@ interface AccountInfo {
 	email: string;
 	from: string;
 	username: string;
+	id: string;
+	label: string;
 }
 
-export function getAccountInfo(env: Env): AccountInfo {
+export function accountInfo(acc: Account): AccountInfo {
 	return {
-		email: accountEmail(env),
-		from: fromAddress(env),
-		username: env.EMAIL_USERNAME,
+		email: accountEmailFor(acc),
+		from: fromAddressFor(acc),
+		username: acc.username,
+		id: acc.id,
+		label: acc.label,
 	};
 }
 
@@ -137,7 +150,7 @@ const LOGIN_WINDOW_MS = 60_000;
 const LOGIN_MAX_ATTEMPTS = 5;
 // 登录限流：配置了 LOGIN_KV 时用 KV 实现跨实例全局限流，否则退化为按
 // 隔离实例的内存计数（配合强密码足够个人使用）。
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const loginAttempts = new Map<string, { count: number; resetAt: number }>;
 
 function isLoginBlocked(ip: string): boolean {
 	const now = Date.now();
@@ -283,8 +296,11 @@ export async function handleLogin(env: Env, body: { password?: string; totp?: st
 		}
 	}
 	await clearLoginFailuresKv(env, ip);
-	const token = await createSession(env);
-	const res = json({ ok: true, ...getAccountInfo(env) });
+	const activeId = getActiveAccountId(env);
+	const token = await createSession(env, activeId);
+	const accounts = listAccounts(env);
+	const active = accounts.find((a) => a.id === activeId) || accounts[0];
+	const res = json({ ok: true, ...(active ? accountInfo(active) : { email: "", from: "", username: "", id: activeId, label: "" }) });
 	setSessionCookie(res, token, isHttps(request));
 	return res;
 }
@@ -295,32 +311,84 @@ export async function handleLogout(request: Request): Promise<Response> {
 	return res;
 }
 
-export async function handleMe(env: Env): Promise<Response> {
-	return json({ ok: true, ...getAccountInfo(env) });
+export async function handleMe(env: Env, account: Account): Promise<Response> {
+	return json({ ok: true, ...accountInfo(account) });
 }
 
-/* ---------------- 头像（base64 存 KV） ---------------- */
+/* ---------------- 多账号管理 ----------------
+   列表仅返回公开字段（id / label / email / from），密码与主机端口不暴露；
+   写操作同样不返回敏感字段，避免无意间把凭据泄漏给前端。 */
 
-const AVATAR_KV_KEY = "avatar";
-/** data URL 最大长度（约 300KB 二进制） */
+export function handleListAccounts(env: Env, activeId: string): Response {
+	const accounts = listAccounts(env);
+	const resolved = resolveAccount(env, activeId);
+	const currentId = resolved?.id ?? getActiveAccountId(env);
+	return json({
+		ok: true,
+		active: currentId,
+		accounts: accounts.map((a) => toPublicAccount(a)),
+	});
+}
+
+const ACCOUNT_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
+
+function validateAccountId(id: unknown): string | null {
+	const s = String(id ?? "").trim();
+	if (!s || !ACCOUNT_ID_RE.test(s)) return null;
+	return s;
+}
+
+/**
+ * 切换活跃账号：生成新会话 Cookie，覆盖原会话。
+ * 同源 POST + SameSite=Lax 已能挡掉 CSRF；这里再加同源校验作为纵深防御。
+ */
+export async function handleSetActiveAccount(env: Env, body: { id?: string }, request: Request): Promise<Response> {
+	const id = validateAccountId(body.id);
+	if (!id) return error("账号 id 不合法", 400);
+	const accounts = listAccounts(env);
+	if (!accounts.some((a) => a.id === id)) return error("账号不存在", 404);
+	const token = await createSession(env, id);
+	const acc = accounts.find((a) => a.id === id)!;
+	const res = json({ ok: true, active: id, account: accountInfo(acc) });
+	setSessionCookie(res, token, isHttps(request));
+	return res;
+}
+
+/* ---------------- 头像（base64 存 KV，每账号独立槽位） ---------------- */
+
+function avatarKvKey(accountId: string): string {
+	return `avatar:${accountId}`;
+}
+
+const LEGACY_AVATAR_KEY = "avatar";
 const MAX_AVATAR_DATAURL = 400_000;
 const AVATAR_MIME_RE = /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 
-export async function handleAvatarGet(env: Env): Promise<Response> {
+async function readAvatar(env: Env, accountId: string): Promise<string | null> {
+	if (!env.AVATAR_KV) return null;
+	const direct = await env.AVATAR_KV.get(avatarKvKey(accountId));
+	if (direct) return direct;
+	// 1.2.x 及之前只有一个全局 "avatar" 槽位；升级后账号还没有独立头像时回落到它，
+	// 已部署用户的旧头像不丢。各账号同属一个登录用户，不存在跨用户读取。
+	return env.AVATAR_KV.get(LEGACY_AVATAR_KEY);
+}
+
+export async function handleAvatarGet(env: Env, account: Account): Promise<Response> {
 	if (!env.AVATAR_KV) return json({ ok: true, dataUrl: null });
-	const dataUrl = await env.AVATAR_KV.get(AVATAR_KV_KEY);
+	const dataUrl = await readAvatar(env, account.id);
 	return json({ ok: true, dataUrl: dataUrl || null });
 }
 
 export async function handleAvatarPut(
 	env: Env,
+	account: Account,
 	body: { dataUrl?: string; clear?: boolean },
 ): Promise<Response> {
 	if (!env.AVATAR_KV) {
 		return error("头像存储未配置：请在 wrangler.toml 中启用 AVATAR_KV 并重新部署", 501);
 	}
 	if (body.clear) {
-		await env.AVATAR_KV.delete(AVATAR_KV_KEY);
+		await env.AVATAR_KV.delete(avatarKvKey(account.id));
 		return json({ ok: true });
 	}
 	const dataUrl = body.dataUrl || "";
@@ -330,12 +398,12 @@ export async function handleAvatarPut(
 	if (dataUrl.length > MAX_AVATAR_DATAURL) {
 		return error("图片过大，请使用 256KB 以内的图片", 400);
 	}
-	await env.AVATAR_KV.put(AVATAR_KV_KEY, dataUrl);
+	await env.AVATAR_KV.put(avatarKvKey(account.id), dataUrl);
 	return json({ ok: true });
 }
 
-export async function handleFolders(env: Env): Promise<Response> {
-	return withImap(env, async (imap) => {
+export async function handleFolders(env: Env, account: Account): Promise<Response> {
+	return withImap(account, async (imap) => {
 		const folders = await listFolders(imap);
 
 		const results = [];
@@ -390,14 +458,14 @@ function toListItem(email: Email) {
 	};
 }
 
-export async function handleListEmails(env: Env, url: URL): Promise<Response> {
+export async function handleListEmails(env: Env, account: Account, url: URL): Promise<Response> {
 	const folder = url.searchParams.get("folder") || "INBOX";
 	const bad = assertSafeMailbox(folder);
 	if (bad) return bad;
 	const offset = Math.max(0, parseInt(url.searchParams.get("offset") || "0", 10) || 0);
 	const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "50", 10) || 50));
 
-	return withImap(env, async (imap) => {
+	return withImap(account, async (imap) => {
 		await imap.selectFolder(folder);
 		const seqs = await imap.searchEmails({ all: true });
 		const total = seqs.length;
@@ -437,14 +505,14 @@ function matchesQuery(email: Email, q: string): boolean {
  * `SUBJECT` / `FROM` / `HEADER` 等条件都会被忽略并返回整个邮箱，因此这里改为
  * 拉取最近一批邮件头部后在本地按关键词过滤。
  */
-export async function handleSearchEmails(env: Env, url: URL): Promise<Response> {
+export async function handleSearchEmails(env: Env, account: Account, url: URL): Promise<Response> {
 	const folder = url.searchParams.get("folder") || "INBOX";
 	const bad = assertSafeMailbox(folder);
 	if (bad) return bad;
 	const q = (url.searchParams.get("q") || "").trim().toLowerCase();
 	if (!q) return error("缺少搜索关键词", 400);
 
-	return withImap(env, async (imap) => {
+	return withImap(account, async (imap) => {
 		await imap.selectFolder(folder);
 		const seqs = await imap.searchEmails({ all: true });
 		seqs.reverse();
@@ -462,7 +530,7 @@ export async function handleSearchEmails(env: Env, url: URL): Promise<Response> 
 	}).catch((e) => parseError(e));
 }
 
-export async function handleReadEmail(env: Env, url: URL): Promise<Response> {
+export async function handleReadEmail(env: Env, account: Account, url: URL): Promise<Response> {
 	const folder = url.searchParams.get("folder") || "INBOX";
 	const bad = assertSafeMailbox(folder);
 	if (bad) return bad;
@@ -470,7 +538,7 @@ export async function handleReadEmail(env: Env, url: URL): Promise<Response> {
 	const markRead = url.searchParams.get("read") !== "0";
 	if (!uid) return error("缺少 uid", 400);
 
-	return withImap(env, async (imap) => {
+	return withImap(account, async (imap) => {
 		const emails = await imap.fetchEmails({
 			folder,
 			limit: [uid, uid],
@@ -520,7 +588,7 @@ interface FlagActionBody {
 	action?: "add" | "remove" | "replace";
 }
 
-export async function handleSetFlags(env: Env, body: FlagActionBody): Promise<Response> {
+export async function handleSetFlags(env: Env, account: Account, body: FlagActionBody): Promise<Response> {
 	const folder = body.folder || "INBOX";
 	const bad = assertSafeMailbox(folder);
 	if (bad) return bad;
@@ -532,7 +600,7 @@ export async function handleSetFlags(env: Env, body: FlagActionBody): Promise<Re
 	if (flags.length === 0) return error("缺少有效邮件标记", 400);
 	const action = body.action ?? "add";
 
-	return withImap(env, async (imap) => {
+	return withImap(account, async (imap) => {
 		await imap.selectFolder(folder);
 		await imap.storeFlags(target, flags, action, true);
 		return json({ ok: true });
@@ -563,7 +631,7 @@ async function moveWithFallback(imap: CFImap, dest: string, target: string, useU
 	return null;
 }
 
-export async function handleMove(env: Env, body: MoveBody): Promise<Response> {
+export async function handleMove(env: Env, account: Account, body: MoveBody): Promise<Response> {
 	const folder = body.folder || "INBOX";
 	const bad = assertSafeMailbox(folder);
 	if (bad) return bad;
@@ -574,7 +642,7 @@ export async function handleMove(env: Env, body: MoveBody): Promise<Response> {
 	if (typeof targetOrErr === "object") return targetOrErr;
 	const target = targetOrErr;
 
-	return withImap(env, async (imap) => {
+	return withImap(account, async (imap) => {
 		await imap.selectFolder(folder);
 		await moveWithFallback(imap, body.dest, target, true);
 		return json({ ok: true });
@@ -587,7 +655,7 @@ interface DeleteBody {
 	permanent?: boolean;
 }
 
-export async function handleDelete(env: Env, body: DeleteBody): Promise<Response> {
+export async function handleDelete(env: Env, account: Account, body: DeleteBody): Promise<Response> {
 	const folder = body.folder || "INBOX";
 	const bad = assertSafeMailbox(folder);
 	if (bad) return bad;
@@ -596,7 +664,7 @@ export async function handleDelete(env: Env, body: DeleteBody): Promise<Response
 	if (typeof targetOrErr === "object") return targetOrErr;
 	const target = targetOrErr;
 
-	return withImap(env, async (imap) => {
+	return withImap(account, async (imap) => {
 		await imap.selectFolder(folder);
 		const folders = await listFolders(imap);
 		const trash = specialFolderName(folders, "trash");
@@ -643,7 +711,7 @@ function base64Bytes(b64: string): number {
 	return Math.max(0, Math.floor((b64.length * 3) / 4) - padding);
 }
 
-export async function handleSend(env: Env, body: SendBody): Promise<Response> {
+export async function handleSend(env: Env, account: Account, body: SendBody): Promise<Response> {
 	const to = (Array.isArray(body.to) ? body.to : [])
 		.map((s) => stripCrlf(String(s ?? "").trim()))
 		.filter(Boolean);
@@ -677,7 +745,7 @@ export async function handleSend(env: Env, body: SendBody): Promise<Response> {
 	const inReplyTo = body.inReplyTo ? stripCrlf(String(body.inReplyTo)) : undefined;
 	const references = body.references ? stripCrlf(String(body.references)) : undefined;
 
-	const from = fromAddress(env);
+	const from = fromAddressFor(account);
 
 	const raw = buildMimeMessage({
 		from,
@@ -692,22 +760,22 @@ export async function handleSend(env: Env, body: SendBody): Promise<Response> {
 	});
 
 	try {
-	await sendMail(env.EMAIL_SMTP_HOST, smtpPort(env), env.EMAIL_USERNAME, env.EMAIL_PASSWORD, {
-		from,
-		to,
-		cc,
-		bcc,
-		subject,
-		rawMessage: raw,
-	});
+		await sendMail(account.smtpHost, smtpPortFor(account), account.username, account.password, {
+			from,
+			to,
+			cc,
+			bcc,
+			subject,
+			rawMessage: raw,
+		});
 	} catch (e) {
-		console.error("SMTP send failed:", e instanceof Error ? e.message : String(e));
+		console.error("SMTP send failed", account.id, e instanceof Error ? e.message : String(e));
 		return error("邮件发送失败，请检查收件人地址后重试", 502);
 	}
 
 	// Best-effort: save a copy to the Sent folder so the client shows it.
 	try {
-		await withImap(env, async (imap) => {
+		await withImap(account, async (imap) => {
 			const folders = await listFolders(imap);
 			const sent = specialFolderName(folders, "sent");
 			if (sent) {
@@ -715,7 +783,7 @@ export async function handleSend(env: Env, body: SendBody): Promise<Response> {
 			}
 		});
 	} catch (e) {
-		console.error("Failed to save to Sent folder", e);
+		console.error("Failed to save to Sent folder", account.id, e);
 	}
 
 	return json({ ok: true });
