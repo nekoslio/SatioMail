@@ -26,7 +26,8 @@ export interface AutoAvatarConfig {
 }
 
 export function parseAutoAvatarConfig(raw: string | undefined): AutoAvatarConfig {
-	if (!raw) return { sources: ["gravatar", "qq"] };
+	// 未配置时默认开启（gravatar,qq）；显式留空或 "none" 表示关闭
+	if (raw === undefined) return { sources: ["gravatar", "qq"] };
 	const cleaned = raw
 		.split(/[,\s]+/)
 		.map((s) => s.trim().toLowerCase())
@@ -35,8 +36,9 @@ export function parseAutoAvatarConfig(raw: string | undefined): AutoAvatarConfig
 	return { sources: cleaned };
 }
 
-function avatarEmail(accountEmail: string): string {
-	return accountEmail.trim().split(/[<>]/)[0].trim().toLowerCase();
+function normalizeEmail(email: string): string {
+	// accountEmailFor 已保证返回不含显示名的纯邮箱地址
+	return email.trim().toLowerCase();
 }
 
 /**
@@ -57,7 +59,8 @@ async function lookupGravatar(email: string, signal: AbortSignal): Promise<strin
 }
 
 /**
- * QQ 头像：当地址是 user@qq.com 且 user 全为数字时，按 QQ 号查 q.qlogo.cn；
+ * QQ 头像：地址为腾讯系域名（qq.com / vip.qq.com / foxmail.com）且
+ * 本地段是 5–12 位纯数字时，按 QQ 号查 q.qlogo.cn；
  * 其他情况下直接放弃（与 Gravatar 的回退互补，避免对任意邮箱乱猜 QQ 号）。
  */
 async function lookupQq(email: string, signal: AbortSignal): Promise<string | null> {
@@ -94,7 +97,7 @@ export interface AutoAvatarResult {
  * 调用方应传入 ctx.waitUntil 让缓存写操作脱离主请求生命周期。
  */
 export async function resolveAutoAvatar(cfg: AutoAvatarConfig, email: string): Promise<AutoAvatarResult> {
-	const normalized = avatarEmail(email);
+	const normalized = normalizeEmail(email);
 	if (!normalized || !normalized.includes("@")) return { source: null, dataUrl: null };
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), AUTO_FETCH_TIMEOUT_MS);
@@ -117,8 +120,7 @@ export async function resolveAutoAvatar(cfg: AutoAvatarConfig, email: string): P
 }
 
 function autoKvKey(accountId: string): string {
-	// accountId 是会话里 HMAC 签名过的，可用作缓存键；
-	// 不同账号之间不会撞，也不会泄露邮箱明文。
+	// 按账号隔离，多账号部署互不串用；id 是账号配置里的稳定标识，不含邮箱明文
 	return `${AUTO_CACHE_PREFIX}${accountId}`;
 }
 
@@ -145,8 +147,8 @@ export async function writeAutoAvatarCache(
 }
 
 /* ---------------- MD5 / Base64 ----------------
-   Cloudflare Workers 没有内置 MD5；Gravatar 要求的是 RFC 1321 MD5。
-   用纯 JS 实现 + crypto.subtle 验证过的标准位运算。*/
+   Cloudflare Workers 没有内置 MD5；Gravatar 要求的是 RFC 1321 MD5，
+   这里用纯 JS 位运算实现，输出经 RFC 1321 测试向量验证。*/
 
 function bytesToBase64(bytes: Uint8Array): string {
 	let binary = "";
@@ -220,23 +222,24 @@ function syncMd5Hex(input: string): string {
 		for (let j = 0; j < 16; j++) {
 			M[j] = view.getInt32(i + j * 4, true);
 		}
-		const a = A, b = B, c = C, d = D;
+		const a = A, b = B, c = C, d = D; // 块初值，块结束后回加
 		for (let j = 0; j < 64; j++) {
 			let F: number, g: number;
+			// F 必须用滚动中的 B/C/D 计算，不能引用块初值 b/c/d
 			if (j < 16) {
-				F = (b & c) | (~b & d);
+				F = (B & C) | (~B & D);
 				g = j;
 			} else if (j < 32) {
-				F = (d & b) | (~d & c);
+				F = (D & B) | (~D & C);
 				g = (5 * j + 1) % 16;
 			} else if (j < 48) {
-				F = b ^ c ^ d;
+				F = B ^ C ^ D;
 				g = (3 * j + 5) % 16;
 			} else {
-				F = c ^ (b | ~d);
+				F = C ^ (B | ~D);
 				g = (7 * j) % 16;
 			}
-			const temp = d;
+			const temp = D;
 			D = C;
 			C = B;
 			B = (B + rotl((A + F + (K[j] | 0) + (M[g] | 0)) | 0, S[j])) | 0;
@@ -248,9 +251,13 @@ function syncMd5Hex(input: string): string {
 		D = (D + d) | 0;
 	}
 
+	// MD5 摘要按小端字节序输出每个 32 位字（RFC 1321 Encode），即先打低位字节
 	const toHex = (n: number) => {
-		const v = n >>> 0;
-		return ("00000000" + v.toString(16)).slice(-8);
+		let out = "";
+		for (let k = 0; k < 4; k++) {
+			out += ((n >>> (k * 8)) & 0xff).toString(16).padStart(2, "0");
+		}
+		return out;
 	};
 	return toHex(A) + toHex(B) + toHex(C) + toHex(D);
 }
