@@ -1,4 +1,5 @@
 import type { Env } from "./config";
+import { listAccounts, resolveAccount } from "./config";
 import { verifySession } from "./auth";
 import {
 	json,
@@ -18,6 +19,8 @@ import {
 	handleMove,
 	handleDelete,
 	handleSend,
+	handleListAccounts,
+	handleSetActiveAccount,
 } from "./api";
 
 async function readJson<T>(request: Request): Promise<T> {
@@ -82,7 +85,7 @@ function applySecurityHeaders(response: Response): Response {
 	});
 }
 
-async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
+async function handleApi(request: Request, env: Env, url: URL, ctx: ExecutionContext): Promise<Response> {
 	const path = url.pathname;
 
 	if (request.method === "POST" && path === "/api/login") {
@@ -94,8 +97,19 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 		return handleAuthConfig(env);
 	}
 
-	if (!(await verifySession(request, env))) {
+	// 未配置任何邮箱账号时直接 503 并给出可操作的提示，
+	// 而不是让登录后的每个接口各自报错。
+	if (listAccounts(env).length === 0) {
+		return error("尚未配置任何邮箱账号：请在 wrangler secret put ACCOUNTS_CONFIG 中设置，或使用 EMAIL_USERNAME / EMAIL_PASSWORD", 503);
+	}
+
+	const activeId = await verifySession(request, env);
+	if (!activeId) {
 		return error("未登录或会话已过期", 401);
+	}
+	const account = resolveAccount(env, activeId);
+	if (!account) {
+		return error("当前账号已失效，请重新登录", 401);
 	}
 
 	if (request.method === "POST" && path === "/api/logout") {
@@ -103,63 +117,72 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 	}
 
 	if (request.method === "GET" && path === "/api/me") {
-		return handleMe(env);
+		return handleMe(env, account);
+	}
+
+	if (request.method === "GET" && path === "/api/accounts") {
+		return handleListAccounts(env, activeId);
+	}
+
+	if (request.method === "POST" && path === "/api/accounts/active") {
+		if (!isSameOrigin(request)) return error("拒绝跨站请求", 403);
+		return handleSetActiveAccount(env, await readJson(request), request);
 	}
 
 	if (request.method === "GET" && path === "/api/avatar") {
-		return handleAvatarGet(env);
+		return handleAvatarGet(env, account);
 	}
 
 	if (request.method === "GET" && path === "/api/avatar/auto") {
-		return handleAutoAvatarGet(env);
+		return handleAutoAvatarGet(env, account, ctx);
 	}
 
 	if (request.method === "POST" && path === "/api/avatar") {
 		if (!isSameOrigin(request)) return error("拒绝跨站请求", 403);
-		return handleAvatarPut(env, await readJson(request));
+		return handleAvatarPut(env, account, await readJson(request));
 	}
 
 	if (request.method === "GET" && path === "/api/folders") {
-		return handleFolders(env);
+		return handleFolders(env, account);
 	}
 
 	if (request.method === "GET" && path === "/api/emails") {
-		return handleListEmails(env, url);
+		return handleListEmails(env, account, url);
 	}
 
 	if (request.method === "GET" && path === "/api/search") {
-		return handleSearchEmails(env, url);
+		return handleSearchEmails(env, account, url);
 	}
 
 	if (request.method === "GET" && path === "/api/email") {
-		return handleReadEmail(env, url);
+		return handleReadEmail(env, account, url);
 	}
 
 	if (request.method === "POST" && path === "/api/flags") {
 		if (!isSameOrigin(request)) return error("拒绝跨站请求", 403);
-		return handleSetFlags(env, await readJson(request));
+		return handleSetFlags(env, account, await readJson(request));
 	}
 
 	if (request.method === "POST" && path === "/api/move") {
 		if (!isSameOrigin(request)) return error("拒绝跨站请求", 403);
-		return handleMove(env, await readJson(request));
+		return handleMove(env, account, await readJson(request));
 	}
 
 	if (request.method === "POST" && path === "/api/delete") {
 		if (!isSameOrigin(request)) return error("拒绝跨站请求", 403);
-		return handleDelete(env, await readJson(request));
+		return handleDelete(env, account, await readJson(request));
 	}
 
 	if (request.method === "POST" && path === "/api/send") {
 		if (!isSameOrigin(request)) return error("拒绝跨站请求", 403);
-		return handleSend(env, await readJson(request));
+		return handleSend(env, account, await readJson(request));
 	}
 
 	return error("接口不存在", 404);
 }
 
 export default {
-	async fetch(request: Request, env: Env): Promise<Response> {
+	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		const url = new URL(request.url);
 
 		// 静态资源由 ASSETS 直接返回（安全响应头通过 public/_headers 由边缘附加，
@@ -168,6 +191,6 @@ export default {
 			return env.ASSETS.fetch(request);
 		}
 
-		return applySecurityHeaders(await handleApi(request, env, url));
+		return applySecurityHeaders(await handleApi(request, env, url, ctx));
 	},
 } satisfies ExportedHandler<Env>;

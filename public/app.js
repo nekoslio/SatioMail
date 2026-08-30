@@ -28,6 +28,8 @@
 
 	const state = {
 		account: null,
+		accounts: [],
+		activeAccountId: null,
 		folders: [],
 		folderMap: new Map(),
 		currentFolder: "INBOX",
@@ -145,6 +147,9 @@
 			opts.method = "POST";
 			opts.headers["Content-Type"] = "application/json";
 			opts.body = JSON.stringify(data);
+		}
+		if (state.activeAccountId) {
+			opts.headers["X-Account-Id"] = state.activeAccountId;
 		}
 		const res = await fetch(path, opts);
 		let json = null;
@@ -289,6 +294,69 @@
 			applyAvatar(auto.dataUrl);
 		} catch {
 			/* 头像加载失败不影响主流程 */
+		}
+	}
+
+	/* ---------------- 多账号切换 ---------------- */
+	function closeAccountMenu() {
+		const menu = $("#account-menu");
+		if (menu) menu.hidden = true;
+	}
+
+	function renderAccountMenu() {
+		const menu = $("#account-menu");
+		if (!menu) return;
+		menu.innerHTML = "";
+		for (const acc of state.accounts) {
+			const btn = document.createElement("button");
+			btn.type = "button";
+			btn.className = "account-menu-item" + (acc.id === state.activeAccountId ? " active" : "");
+			btn.setAttribute("role", "menuitem");
+			btn.innerHTML =
+				`<span class="account-menu-avatar" style="background:${avatarColor(acc.email)}">${esc(initialsOf(acc.email))}</span>` +
+				`<span class="account-menu-text">` +
+				`<span class="account-menu-label">${esc(acc.label || acc.email)}</span>` +
+				`<span class="account-menu-email">${esc(acc.email)}</span>` +
+				`</span>`;
+			btn.addEventListener("click", () => switchAccount(acc.id));
+			menu.appendChild(btn);
+		}
+	}
+
+	function toggleAccountMenu() {
+		const menu = $("#account-menu");
+		if (!menu) return;
+		menu.hidden = !menu.hidden;
+	}
+
+	async function switchAccount(id) {
+		if (!id || id === state.activeAccountId) {
+			closeAccountMenu();
+			return;
+		}
+		try {
+			await api("/api/accounts/active", { id });
+			// 后端已下发新的会话 Cookie，重载页面让所有缓存状态重建（最简、最稳）
+			location.reload();
+		} catch (e) {
+			toast(e.message, "error");
+			closeAccountMenu();
+		}
+	}
+
+	async function loadAccounts() {
+		try {
+			const data = await api("/api/accounts");
+			state.accounts = data.accounts || [];
+			state.activeAccountId = data.active || null;
+			// 单账号时隐藏切换下拉箭头，避免让用户觉得有未启用的功能
+			const caret = $("#account-chip-caret");
+			if (caret) caret.hidden = state.accounts.length <= 1;
+			const chip = $("#account-chip");
+			if (chip) chip.title = state.accounts.length > 1 ? "切换账号" : "当前账号";
+			renderAccountMenu();
+		} catch {
+			/* 账号列表拉取失败不影响主流程 */
 		}
 	}
 
@@ -1026,6 +1094,7 @@
 	/* ---------------- refresh ---------------- */
 	async function refreshAll() {
 		loadAvatar();
+		loadAccounts();
 		try {
 			await loadFolders();
 		} catch (e) {
@@ -1149,6 +1218,30 @@
 				/* ignore */
 			}
 			location.reload();
+		});
+
+		$("#account-chip").addEventListener("click", (e) => {
+			e.stopPropagation();
+			if (state.accounts.length <= 1) return;
+			toggleAccountMenu();
+		});
+		$("#account-chip").addEventListener("keydown", (e) => {
+			if (e.key === "Enter" || e.key === " ") {
+				e.preventDefault();
+				if (state.accounts.length > 1) toggleAccountMenu();
+			} else if (e.key === "Escape") {
+				closeAccountMenu();
+			}
+		});
+		document.addEventListener("click", (e) => {
+			const menu = $("#account-menu");
+			if (!menu || menu.hidden) return;
+			if (e.target === $("#account-chip") || $("#account-chip").contains(e.target)) return;
+			if (menu.contains(e.target)) return;
+			closeAccountMenu();
+		});
+		document.addEventListener("keydown", (e) => {
+			if (e.key === "Escape") closeAccountMenu();
 		});
 
 		$("#btn-settings").addEventListener("click", showSettings);
