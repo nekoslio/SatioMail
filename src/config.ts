@@ -18,6 +18,8 @@ export interface Env {
 	LOGIN_KV?: KVNamespace;
 	/** 可选：头像存储 KV（不配置则头像功能返回未配置提示） */
 	AVATAR_KV?: KVNamespace;
+	/** 可选：自动头像来源顺序，逗号分隔，取值 gravatar / qq；空或 none 表示关闭 */
+	AVATAR_AUTO_SOURCE?: string;
 	/** 可选：TOTP 二步验证密钥（Base32）。不配置则登录无需动态验证码 */
 	TOTP_SECRET?: string;
 	/** 可选：Turnstile 人机验证站点密钥（公开）。不配置则登录无人机验证 */

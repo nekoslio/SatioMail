@@ -98,6 +98,15 @@ npx wrangler kv namespace create AVATAR_KV
 
 把命令输出的 `id` 填入项目根目录 `wrangler.toml` 中 `AVATAR_KV` 注释段，并取消该段注释。
 
+## 六点五、（可选）自动头像
+
+未上传头像时，按 `wrangler.toml` 里 `[vars]` 段 `AVATAR_AUTO_SOURCE` 的顺序尝试外部来源，
+命中后写入 `AVATAR_KV` 的 `auto-avatar:<账号ID>` 槽位（按账号隔离），下次直接 KV 命中，不再打外网。
+
+- 默认 `"gravatar,qq"`：先 Gravatar（MD5(邮箱)）后 QQ 头像（地址为 `qq.com` / `vip.qq.com` / `foxmail.com` 且本地段为 5–12 位纯数字）
+- `"none"` / 留空：关闭自动加载
+- 不需要任何 Secrets 或 API Key，两个服务都是公开端点
+
 ## 七、部署
 
 ```bash

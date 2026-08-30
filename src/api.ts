@@ -16,6 +16,12 @@ import { sendMail } from "./smtp";
 import { buildMimeMessage } from "./mime";
 import { constantTimeEqual, createSession, setSessionCookie, clearCookieHeader, isHttps } from "./auth";
 import { verifyTotp } from "./totp";
+import {
+	parseAutoAvatarConfig,
+	readAutoAvatarCache,
+	resolveAutoAvatar,
+	writeAutoAvatarCache,
+} from "./auto-avatar";
 
 export function json(data: unknown, status = 200): Response {
 	return new Response(JSON.stringify(data), {
@@ -400,6 +406,38 @@ export async function handleAvatarPut(
 	}
 	await env.AVATAR_KV.put(avatarKvKey(account.id), dataUrl);
 	return json({ ok: true });
+}
+
+/**
+ * 自动头像：当用户没上传自定义头像时，按 env.AVATAR_AUTO_SOURCE 顺序
+ * 查找 Gravatar / QQ 头像，命中即缓存到 AVATAR_KV 的 auto-avatar:<账号ID> 槽位。
+ * 命中缓存直接返回，不发外网请求；未命中才查找，结果（含未命中）写缓存。
+ */
+export async function handleAutoAvatarGet(
+	env: Env,
+	account: Account,
+	ctx?: ExecutionContext,
+): Promise<Response> {
+	const cfg = parseAutoAvatarConfig(env.AVATAR_AUTO_SOURCE);
+	if (cfg.sources.length === 0 || !env.AVATAR_KV) {
+		return json({ ok: true, source: null, dataUrl: null });
+	}
+
+	const cached = await readAutoAvatarCache(env, account.id);
+	if (cached) {
+		return json({ ok: true, source: cached.source, dataUrl: cached.dataUrl });
+	}
+
+	const result = await resolveAutoAvatar(cfg, accountEmailFor(account));
+	const persist = writeAutoAvatarCache(env, account.id, result);
+	if (ctx) {
+		// 写缓存不阻塞响应，但通过 waitUntil 保证在 Worker 生命周期内完成
+		ctx.waitUntil(persist);
+	} else {
+		// 本地/测试环境没有 ExecutionContext 时同步写完
+		await persist;
+	}
+	return json({ ok: true, source: result.source, dataUrl: result.dataUrl });
 }
 
 export async function handleFolders(env: Env, account: Account): Promise<Response> {

@@ -10,6 +10,7 @@ import {
 	handleAuthConfig,
 	handleAvatarGet,
 	handleAvatarPut,
+	handleAutoAvatarGet,
 	handleFolders,
 	handleListEmails,
 	handleSearchEmails,
@@ -84,7 +85,7 @@ function applySecurityHeaders(response: Response): Response {
 	});
 }
 
-async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
+async function handleApi(request: Request, env: Env, url: URL, ctx: ExecutionContext): Promise<Response> {
 	const path = url.pathname;
 
 	if (request.method === "POST" && path === "/api/login") {
@@ -132,6 +133,10 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 		return handleAvatarGet(env, account);
 	}
 
+	if (request.method === "GET" && path === "/api/avatar/auto") {
+		return handleAutoAvatarGet(env, account, ctx);
+	}
+
 	if (request.method === "POST" && path === "/api/avatar") {
 		if (!isSameOrigin(request)) return error("拒绝跨站请求", 403);
 		return handleAvatarPut(env, account, await readJson(request));
@@ -177,7 +182,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 }
 
 export default {
-	async fetch(request: Request, env: Env): Promise<Response> {
+	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		const url = new URL(request.url);
 
 		// 静态资源由 ASSETS 直接返回（安全响应头通过 public/_headers 由边缘附加，
@@ -186,6 +191,6 @@ export default {
 			return env.ASSETS.fetch(request);
 		}
 
-		return applySecurityHeaders(await handleApi(request, env, url));
+		return applySecurityHeaders(await handleApi(request, env, url, ctx));
 	},
 } satisfies ExportedHandler<Env>;
